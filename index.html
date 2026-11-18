@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>DaVinci Tattoo</title>
+<meta name="theme-color" content="#14110f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DaVinci">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="view"></canvas></div>
+
+  <header id="topbar">
+    <div class="brand"><span class="mark"></span>DaVinci <em>Tattoo</em></div>
+    <div class="seg" id="sexSeg">
+      <button data-v="0">Donna</button><button data-v="1" class="on">Uomo</button>
+    </div>
+    <div class="tools">
+      <button class="chip" data-view="front">Fronte</button>
+      <button class="chip" data-view="side">Lato</button>
+      <button class="chip" data-view="back">Retro</button>
+      <button class="chip" id="panelBtn" title="Pannello">☰</button>
+    </div>
+  </header>
+
+  <aside id="panel">
+    <div class="panel-head">
+      <div class="stat"><span>Altezza</span><b id="heightOut">—</b></div>
+      <div class="toggles">
+        <label class="tg"><input type="checkbox" id="symTg" checked><span>Simmetria sx/dx</span></label>
+        <label class="tg"><input type="checkbox" id="smoothTg" checked><span>Superficie liscia</span></label>
+        <label class="tg"><input type="checkbox" id="wireTg"><span>Griglia</span></label>
+      </div>
+    </div>
+    <div id="sections"></div>
+    <div class="panel-foot">
+      <button class="btn ghost" id="resetBtn">Azzera tutto</button>
+      <span class="ver">v0.1 · tappa 1</span>
+    </div>
+  </aside>
+
+  <div id="loading"><div class="spin"></div><p>Preparo il corpo…</p></div>
+  <div id="toast"></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
