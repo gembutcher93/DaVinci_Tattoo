@@ -10,7 +10,7 @@ const STORE = 'davinci.state.v1';
 const defaultState = () => ({
   macro: Object.fromEntries(MACRO.map(m => [m.id, m.def])),
   race: { caucasian: 1, african: 0, asian: 0 },
-  height: null, mods: {}, sym: true, smooth: true, wire: false,
+  height: null, mods: {}, sym: true, smooth: true, wire: false, detail: 1, rake: false,
 });
 let state = defaultState();
 try { const s = JSON.parse(localStorage.getItem(STORE)); if (s && s.macro) state = Object.assign(defaultState(), s); } catch (e) { }
@@ -35,6 +35,20 @@ scene.add(new THREE.HemisphereLight(0xfff1e0, 0x2a2018, 1.1));
 const key = new THREE.DirectionalLight(0xfff4e8, 2.2); key.position.set(2, 3.5, 3); scene.add(key);
 const rim = new THREE.DirectionalLight(0xc99a63, 1.4); rim.position.set(-3, 2.5, -2.5); scene.add(rim);
 const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5); fill.position.set(-2, 1, 3); scene.add(fill);
+const hemi = scene.children.find(o => o.isHemisphereLight);
+// la luce segue la camera, così il rilievo si legge da ogni lato
+const lightRig = new THREE.Group(); scene.add(lightRig);
+function applyLight() {
+  if (state.rake) { key.intensity = 3.2; hemi.intensity = 0.45; fill.intensity = 0.15; rim.intensity = 1.0; }
+  else { key.intensity = 2.2; hemi.intensity = 1.1; fill.intensity = 0.5; rim.intensity = 1.4; }
+}
+function followLight() {
+  const v = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const side = new THREE.Vector3().crossVectors(v, new THREE.Vector3(0, 1, 0)).normalize();
+  const k = state.rake ? 1.6 : 0.8;   // radente = luce molto di lato
+  key.position.copy(controls.target).addScaledVector(v, 2).addScaledVector(side, -2 * k).add(new THREE.Vector3(0, state.rake ? 1.2 : 2.5, 0));
+  key.target.position.copy(controls.target); key.target.updateMatrixWorld();
+}
 
 // pavimento con ombra morbida + cerchio "vitruviano"
 {
@@ -52,7 +66,7 @@ const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5); fill.position.set(-2, 1,
 const skinMat = new THREE.MeshStandardMaterial({ color: 0xd8a585, roughness: 0.62, metalness: 0 });
 const wireMat = new THREE.MeshBasicMaterial({ color: 0x2b1d12, wireframe: true, transparent: true, opacity: 0.35 });
 
-let engine, sub, geoLow, geoHi, mesh, wire, smoothBuf;
+let engine, sub, geoLow, geoHi, mesh, wire, smoothBuf, detail = null;
 let bodyHeight = 1.75; // metri, dopo scala
 
 function makeGeometry(nv, quads) {
@@ -97,7 +111,24 @@ function updateBody() {
     arr[i * 3] = src[i * 3] * s; arr[i * 3 + 1] = (src[i * 3 + 1] - minY) * s; arr[i * 3 + 2] = src[i * 3 + 2] * s;
   }
   geo.attributes.position.needsUpdate = true;
-  geo.computeVertexNormals(); geo.computeBoundingSphere();
+  geo.computeVertexNormals();
+  // definizione muscolare: spostamento lungo la normale (solo superficie liscia)
+  if (state.smooth && detail && state.detail > 0) {
+    const nrm = geo.attributes.normal.array, H = bodyHeight * state.detail;
+    const layers = [];
+    if (detail.m) layers.push([detail.m, state.macro.gender]);
+    if (detail.f) layers.push([detail.f, 1 - state.macro.gender]);
+    for (const [L, gw] of layers) {
+      if (gw < 0.01) continue;
+      const k = H * gw * detail.scale;
+      for (let i = 0; i < n; i++) {
+        const d = L[i] * k; if (!d) continue;
+        arr[i * 3] += nrm[i * 3] * d; arr[i * 3 + 1] += nrm[i * 3 + 1] * d; arr[i * 3 + 2] += nrm[i * 3 + 2] * d;
+      }
+    }
+    geo.computeVertexNormals();
+  }
+  geo.computeBoundingSphere();
   if (mesh.geometry !== geo) { mesh.geometry = geo; wire.geometry = geo; }
   $('#heightOut').textContent = Math.round(targetCm) + ' cm';
   const hs = document.querySelector('#sl-height'); if (hs) { hs.querySelector('input').value = targetCm; hs.querySelector('.val').textContent = Math.round(targetCm) + ' cm'; hs.classList.toggle('changed', !!state.height); }
@@ -187,6 +218,14 @@ function buildPanel() {
     onInput: v => { state.height = v; requestUpdate(); },
     onReset: () => { state.height = null; requestUpdate(); return 175; },
   }));
+  g.appendChild(slider({
+    label: 'Definizione muscolare', min: 0, max: 2.5, step: 0.05, value: state.detail, fmt: v => Math.round(v * 100) + '%', changed: state.detail !== 1,
+    onInput: v => { state.detail = v; requestUpdate(); },
+    onReset: () => { state.detail = 1; requestUpdate(); return 1; },
+  }));
+  const hd = document.createElement('p'); hd.className = 'hint';
+  hd.textContent = 'La definizione si vede con "Superficie liscia" attiva. Per ora è pronta solo sul corpo maschile: la donna arriva coi nuovi modelli.';
+  g.appendChild(hd);
   const h = document.createElement('p'); h.className = 'hint'; h.textContent = 'Origine (corporatura di base). Doppio tocco su un nome per azzerarlo.'; g.appendChild(h);
   for (const r of RACES) g.appendChild(slider({
     label: r.label, min: 0, max: 1, step: 0.01, value: state.race[r.id], fmt: v => Math.round(v * 100) + '%', changed: r.id === 'caucasian' ? state.race[r.id] !== 1 : state.race[r.id] !== 0,
@@ -224,6 +263,8 @@ function wireUI() {
     buildPanel(); requestUpdate(); toast(state.sym ? 'Simmetria attiva: sinistro e destro insieme' : 'Ora puoi regolare sinistro e destro separati');
   });
   const sm = $('#smoothTg'); sm.checked = state.smooth; sm.addEventListener('change', () => { state.smooth = sm.checked; requestUpdate(); });
+  const rk = $('#rakeTg'); rk.checked = state.rake; applyLight();
+  rk.addEventListener('change', () => { state.rake = rk.checked; applyLight(); save(); });
   const wr = $('#wireTg'); wr.checked = state.wire; wire.visible = state.wire; wr.addEventListener('change', () => { state.wire = wr.checked; wire.visible = state.wire; save(); });
   $('#resetBtn').addEventListener('click', () => {
     if (!confirm('Azzero tutte le regolazioni del corpo?')) return;
@@ -244,6 +285,14 @@ new ResizeObserver(resize).observe(canvas);
   engine = await loadBodyData('data/');
   const q = engine.quads;
   sub = buildSubdivision(q, engine.nbody);
+  try {
+    const dj = await fetch('data/detail.json').then(r => r.json());
+    const db = await fetch('data/detail.bin').then(r => r.arrayBuffer());
+    if (dj.n === sub.n) {
+      detail = { scale: dj.scale };
+      for (const [k, off] of Object.entries(dj.layers)) detail[k] = new Int16Array(db, off, dj.n);
+    }
+  } catch (e) { console.warn('dettaglio non caricato', e); }
   smoothBuf = new Float32Array(sub.n * 3);
   geoLow = makeGeometry(engine.nbody, q);
   geoHi = makeGeometry(sub.n, sub.quads);
@@ -253,7 +302,7 @@ new ResizeObserver(resize).observe(canvas);
   buildPanel(); wireUI(); syncSex();
   resize(); updateBody(); setView('front', true);
   $('#loading').classList.add('hide');
-  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+  renderer.setAnimationLoop(() => { controls.update(); followLight(); renderer.render(scene, camera); });
 })().catch(e => { console.error(e); $('#loading p').textContent = 'Errore nel caricamento: ' + e.message; });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
