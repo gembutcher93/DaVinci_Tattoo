@@ -2,7 +2,7 @@
 
 Web app (PWA) per iPad e PC: corpo 3D modellabile sulle misure del cliente, da cui estrarre le mappe piatte dei blocchi da tatuare (per Procreate).
 
-## Stato: tappa 1 di 4 (v0.2: definizione muscolare uomo + luce radente)
+## Stato: v0.3 — tappa 1 completa, tappa 2 in corso (foto fronte/retro/lato, calibrazione, misure)
 - [x] **1. Corpo**: uomo/donna, età, muscolatura, peso, altezza, origine + ~60 comandi per braccia, mani, gambe, busto, addome, seno, collo (sinistro/destro separati o in simmetria)
 - [ ] 2. Foto fronte/lato come sfondo + misure col metro con adattamento automatico
 - [ ] 3. Blocchi selezionabili (mano, avambraccio, braccio, spalla, collo, coscia…) e mappa piatta calcolata nell'app

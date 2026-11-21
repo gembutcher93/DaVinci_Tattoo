@@ -1,7 +1,7 @@
 // Cache offline: l'app funziona anche senza rete dopo la prima apertura.
-const VERSION = 'davinci-v0.2.0';
+const VERSION = 'davinci-v0.3.0';
 const FILES = [
-  './', 'index.html', 'css/app.css', 'js/main.js', 'js/body.js', 'js/modifiers.js',
+  './', 'index.html', 'css/app.css', 'js/main.js', 'js/body.js', 'js/modifiers.js', 'js/photo.js',
   'vendor/three/build/three.module.js', 'vendor/three/build/three.core.js',
   'vendor/three/examples/jsm/controls/OrbitControls.js',
   'data/base.json', 'data/base.bin', 'data/targets.json', 'data/targets.bin', 'data/detail.json', 'data/detail.bin',

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadBodyData, buildSubdivision, quadsToTris } from './body.js';
 import { SECTIONS, MACRO, RACES, targetNames, macroWeights } from './modifiers.js';
+import { createPhotoTool, VIEWS } from './photo.js';
 
 const $ = s => document.querySelector(s);
 const STORE = 'davinci.state.v1';
@@ -43,11 +44,12 @@ function applyLight() {
   else { key.intensity = 2.2; hemi.intensity = 1.1; fill.intensity = 0.5; rim.intensity = 1.4; }
 }
 function followLight() {
-  const v = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const cam_ = photo && photo.active ? photo.camera : camera, tgt = photo && photo.active ? photo.controls.target : controls.target;
+  const v = new THREE.Vector3().subVectors(cam_.position, tgt).normalize();
   const side = new THREE.Vector3().crossVectors(v, new THREE.Vector3(0, 1, 0)).normalize();
   const k = state.rake ? 1.6 : 0.8;   // radente = luce molto di lato
-  key.position.copy(controls.target).addScaledVector(v, 2).addScaledVector(side, -2 * k).add(new THREE.Vector3(0, state.rake ? 1.2 : 2.5, 0));
-  key.target.position.copy(controls.target); key.target.updateMatrixWorld();
+  key.position.copy(tgt).addScaledVector(v, 2).addScaledVector(side, -2 * k).add(new THREE.Vector3(0, state.rake ? 1.2 : 2.5, 0));
+  key.target.position.copy(tgt); key.target.updateMatrixWorld();
 }
 
 // pavimento con ombra morbida + cerchio "vitruviano"
@@ -61,12 +63,14 @@ function followLight() {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
   floor.rotation.x = -Math.PI / 2; floor.position.y = 0.001; scene.add(floor);
+  window.__floor = floor;
 }
 
 const skinMat = new THREE.MeshStandardMaterial({ color: 0xd8a585, roughness: 0.62, metalness: 0 });
 const wireMat = new THREE.MeshBasicMaterial({ color: 0x2b1d12, wireframe: true, transparent: true, opacity: 0.35 });
 
 let engine, sub, geoLow, geoHi, mesh, wire, smoothBuf, detail = null;
+let photo = null, lastH = null;
 let bodyHeight = 1.75; // metri, dopo scala
 
 function makeGeometry(nv, quads) {
@@ -104,6 +108,8 @@ function updateBody() {
   const targetCm = state.height || naturalCm;
   const s = 0.1 * targetCm / naturalCm; // dm -> m con scala altezza
   bodyHeight = targetCm / 100;
+  if (photo && lastH && Math.abs(lastH - bodyHeight) > 1e-4) photo.rescale(bodyHeight / lastH);
+  lastH = bodyHeight;
   const src = state.smooth ? sub.apply(P, smoothBuf) : P;
   const geo = state.smooth ? geoHi : geoLow;
   const arr = geo.attributes.position.array, n = arr.length / 3;
@@ -195,7 +201,7 @@ function syncTwins() { }
 
 function buildPanel() {
   const root = $('#sections'); root.innerHTML = '';
-  const openIds = JSON.parse(sessionStorage.getItem('dv.open') || '["generale"]');
+  const openIds = JSON.parse(sessionStorage.getItem('dv.open') || '["foto","generale"]');
   const mkSec = (id, title) => {
     const d = document.createElement('details'); d.className = 'sec'; d.dataset.id = id; d.open = openIds.includes(id);
     d.innerHTML = `<summary><span></span><span class="count"></span></summary><div class="sec-body"></div>`;
@@ -206,6 +212,9 @@ function buildPanel() {
     });
     root.appendChild(d); return d.querySelector('.sec-body');
   };
+  // Foto cliente
+  const ph = mkSec('foto', 'Foto cliente'); ph.id = 'photoSec';
+  renderPhotoSection();
   // Generale
   const g = mkSec('generale', 'Generale');
   for (const m of MACRO) g.appendChild(slider({
@@ -239,6 +248,70 @@ function buildPanel() {
   }
   refreshCounts();
 }
+function renderPhotoSection() {
+  const el = document.getElementById('photoSec'); if (!el || !photo) return;
+  el.innerHTML = '';
+  const intro = document.createElement('p'); intro.className = 'hint';
+  intro.textContent = '1) Carica le foto del cliente (in piedi, braccia aperte come il modello). 2) Entra in modalità foto e calibra con l\'altezza. 3) Regola i comandi finché il modello combacia, e misura dove ti serve. Per foto precise: cliente a 3 m, telefono dritto all\'altezza del petto, sfondo semplice.';
+  el.appendChild(intro);
+  for (const [k, v] of Object.entries(VIEWS)) {
+    const row = document.createElement('div'); row.className = 'ph-row';
+    const has = photo.has(k);
+    row.innerHTML = `<div class="ph-thumb">${has ? `<img src="${photo.thumb(k)}">` : '<span>—</span>'}</div>
+      <div class="ph-info"><b>${v.label}</b><small>${has ? (photo.calibrated(k) ? 'calibrata ✓' : 'da calibrare') : 'nessuna foto'}</small></div>
+      <button class="btn small ghost" data-act="load">${has ? 'Cambia' : 'Carica'}</button>
+      ${has ? '<button class="btn small ghost" data-act="del">✕</button>' : ''}`;
+    row.querySelector('[data-act=load]').onclick = () => pickPhoto(k);
+    const del = row.querySelector('[data-act=del]'); if (del) del.onclick = () => { if (confirm('Tolgo la foto ' + v.label.toLowerCase() + '?')) photo.removePhoto(k); };
+    el.appendChild(row);
+  }
+  const go = document.createElement('button'); go.className = 'btn wide';
+  go.textContent = photo.active ? 'Esci dalla modalità foto' : 'Entra in modalità foto';
+  go.onclick = () => photo.active ? photo.exit() : photo.enter(firstPhotoView());
+  el.appendChild(go);
+  el.appendChild(slider({ label: 'Opacità foto', min: 0.1, max: 1, step: 0.01, value: state.photo.opacity, fmt: v => Math.round(v * 100) + '%', onInput: v => photo.setOpacity(v), onReset: () => { photo.setOpacity(0.85); return 0.85; } }));
+  el.appendChild(slider({ label: 'Visibilità modello sopra la foto', min: 0.1, max: 1, step: 0.01, value: state.photo.model, fmt: v => Math.round(v * 100) + '%', onInput: v => photo.setModelOpacity(v), onReset: () => { photo.setModelOpacity(0.55); return 0.55; } }));
+}
+function firstPhotoView() { return ['front', 'back', 'side'].find(k => photo.has(k)) || 'front'; }
+let fileInput;
+function pickPhoto(k) {
+  if (!fileInput) { fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none'; document.body.appendChild(fileInput); }
+  fileInput.value = '';
+  fileInput.onchange = async () => {
+    const f = fileInput.files[0]; if (!f) return;
+    toast('Carico la foto…');
+    try { await photo.setPhoto(k, f); toast('Foto ' + VIEWS[k].label.toLowerCase() + ' pronta'); if (photo.active) photo.setView(k); }
+    catch (e) { console.error(e); toast('Non riesco ad aprire questa foto'); }
+  };
+  fileInput.click();
+}
+const MODE_HINT = {
+  none: 'Trascina per spostare la vista, pizzica per zoom. Scegli uno strumento qui sotto.',
+  move: 'Sposta foto: un dito trascina, due dita ingrandiscono e ruotano.',
+  calib: 'Calibra: tocca la PUNTA DELLA TESTA, poi la PIANTA DEI PIEDI del cliente.',
+  measure: 'Misura: tocca due punti sulla foto. Puoi farne quante vuoi.',
+};
+function syncPhotoBar() {
+  const bar = document.getElementById('phbar'); if (!bar || !photo) return;
+  bar.querySelectorAll('[data-pm]').forEach(b => b.classList.toggle('on', photo.mode === b.dataset.pm));
+  bar.querySelector('.ph-hint').textContent = MODE_HINT[photo.mode] + (photo.active && !photo.has(photo.view) ? ' (Nessuna foto per questa vista: caricala dal pannello.)' : '');
+  bar.querySelector('.ph-view').textContent = VIEWS[photo.view].label + (photo.calibrated(photo.view) ? ' · calibrata' : '');
+}
+function wirePhotoBar() {
+  const bar = document.getElementById('phbar');
+  bar.querySelectorAll('[data-pm]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.pm === 'calib' && photo.mode !== 'calib' && photo.has(photo.view)) {
+      const v = prompt('Altezza del cliente in cm', Math.round(bodyHeight * 100));
+      if (v === null) return;
+      const cm = parseFloat(String(v).replace(',', '.'));
+      if (!(cm > 100 && cm < 230)) { toast('Altezza non valida'); return; }
+      state.height = cm; updateBody(); photo.setView(photo.view);
+    }
+    photo.setMode(b.dataset.pm);
+  }));
+  bar.querySelector('[data-act=clear]').addEventListener('click', () => photo.clearMeasures());
+  bar.querySelector('[data-act=exit]').addEventListener('click', () => photo.exit());
+}
 function refreshCounts() {
   for (const sec of SECTIONS) {
     const n = sec.items.filter(it => { const v = state.mods[it.key]; return it.sided ? v && (v.l || v.r) : v; }).length;
@@ -254,7 +327,7 @@ function wireUI() {
   document.querySelectorAll('#sexSeg button').forEach(b => b.addEventListener('click', () => {
     state.macro.gender = +b.dataset.v; syncSex(); buildPanel(); requestUpdate();
   }));
-  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => photo.active ? photo.setView(b.dataset.view) : setView(b.dataset.view)));
   $('#panelBtn').addEventListener('click', () => { document.body.classList.toggle('panel-closed'); setTimeout(resize, 280); });
   const sym = $('#symTg'); sym.checked = state.sym;
   sym.addEventListener('change', () => {
@@ -277,6 +350,7 @@ function resize() {
   const r = canvas.getBoundingClientRect();
   renderer.setSize(r.width, r.height, false);
   camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix();
+  if (photo) photo.resize();
 }
 new ResizeObserver(resize).observe(canvas);
 
@@ -298,11 +372,20 @@ new ResizeObserver(resize).observe(canvas);
   geoHi = makeGeometry(sub.n, sub.quads);
   mesh = new THREE.Mesh(geoLow, skinMat); scene.add(mesh);
   wire = new THREE.Mesh(geoLow, wireMat); wire.visible = false; scene.add(wire);
+  photo = createPhotoTool({
+    scene, canvas, overlay: $('#overlay'), state, save, toast, getHeight: () => bodyHeight, skinMat, hideInPhoto: [window.__floor],
+    onMode: on => { document.body.classList.toggle('photo-mode', on); controls.enabled = !on; },
+  });
+  photo.onChange = () => { renderPhotoSection(); syncPhotoBar(); };
+  photo.onMode = () => syncPhotoBar();
   if (window.matchMedia('(max-aspect-ratio: 1/1)').matches) document.body.classList.add('panel-closed');
-  buildPanel(); wireUI(); syncSex();
+  buildPanel(); wireUI(); wirePhotoBar(); syncSex();
   resize(); updateBody(); setView('front', true);
   $('#loading').classList.add('hide');
-  renderer.setAnimationLoop(() => { controls.update(); followLight(); renderer.render(scene, camera); });
+  renderer.setAnimationLoop(() => {
+    if (photo.active) photo.controls.update(); else controls.update();
+    followLight(); renderer.render(scene, photo.active ? photo.camera : camera); photo.draw();
+  });
 })().catch(e => { console.error(e); $('#loading p').textContent = 'Errore nel caricamento: ' + e.message; });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });

@@ -22,7 +22,18 @@
 </head>
 <body>
 <div id="app">
-  <div id="stage"><canvas id="view"></canvas></div>
+  <div id="stage"><canvas id="view"></canvas><canvas id="overlay"></canvas>
+    <div id="phbar">
+      <div class="ph-top"><span class="ph-view"></span><span class="ph-hint"></span></div>
+      <div class="ph-btns">
+        <button class="chip" data-pm="move">Sposta foto</button>
+        <button class="chip" data-pm="calib">Calibra</button>
+        <button class="chip" data-pm="measure">Misura</button>
+        <button class="chip" data-act="clear">Cancella misure</button>
+        <button class="chip exit" data-act="exit">Esci</button>
+      </div>
+    </div>
+  </div>
 
   <header id="topbar">
     <div class="brand"><span class="mark"></span>DaVinci <em>Tattoo</em></div>
@@ -50,7 +61,7 @@
     <div id="sections"></div>
     <div class="panel-foot">
       <button class="btn ghost" id="resetBtn">Azzera tutto</button>
-      <span class="ver">v0.2 · tappa 1</span>
+      <span class="ver">v0.3 · tappa 2a</span>
     </div>
   </aside>
 
